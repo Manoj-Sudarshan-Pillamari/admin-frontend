@@ -120,6 +120,7 @@ function App() {
     setFile(null);
     setPreview(null);
   };
+
   const handleCloseDeleteDialog = () => {
     setDeleteDialog(false);
     setSelectedId(null);
@@ -127,6 +128,15 @@ function App() {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e?.target?.name]: e?.target?.value });
+  };
+
+  const handlePriorityChange = (e) => {
+    const checked = e?.target?.checked;
+    setFormData({
+      ...formData,
+      priority: checked,
+      rank: checked ? "" : 0,
+    });
   };
 
   const handleFileChange = (e) => {
@@ -139,19 +149,42 @@ function App() {
     }
   };
 
+  const isDuplicateRank = () => {
+    if (!formData?.priority) return false;
+
+    const duplicate = contentList?.find(
+      (brand) =>
+        brand?._id !== selectedId &&
+        brand?.type?.toLowerCase() === formData?.type?.toLowerCase() &&
+        brand?.rank === Number(formData?.rank) &&
+        brand?.priority === true
+    );
+
+    return duplicate;
+  };
+
   const handleSubmit = async () => {
-    if (
-      !formData?.brandName ||
-      !formData?.description ||
-      !formData?.type ||
-      !formData?.rank
-    ) {
+    if (!formData?.brandName || !formData?.description || !formData?.type) {
       showSnackbar("All fields are required", "error");
+      return;
+    }
+
+    if (formData?.priority && !formData?.rank) {
+      showSnackbar("Rank is required when priority is enabled", "error");
       return;
     }
 
     if (!selectedId && !file) {
       showSnackbar("Please upload an image", "error");
+      return;
+    }
+
+    const duplicate = isDuplicateRank();
+    if (duplicate) {
+      showSnackbar(
+        `Rank ${formData?.rank} already exists in "${formData?.type}". Please provide a unique rank value.`,
+        "error"
+      );
       return;
     }
 
@@ -162,7 +195,7 @@ function App() {
       data?.append("brandName", formData?.brandName);
       data?.append("description", formData?.description);
       data?.append("type", formData?.type);
-      data?.append("rank", formData?.rank);
+      data?.append("rank", formData?.priority ? formData?.rank : 0);
       data?.append("priority", formData?.priority);
       if (file) data?.append("media", file);
 
@@ -369,25 +402,11 @@ function App() {
             margin="dense"
             size="small"
           />
-          <TextField
-            fullWidth
-            label="Rank"
-            name="rank"
-            value={formData?.rank}
-            onChange={handleChange}
-            required
-            margin="dense"
-            size="small"
-            type="number"
-            inputProps={{ min: 0 }}
-          />
           <FormControlLabel
             control={
               <Checkbox
                 checked={formData?.priority}
-                onChange={(e) =>
-                  setFormData({ ...formData, priority: e?.target?.checked })
-                }
+                onChange={handlePriorityChange}
               />
             }
             label={
@@ -396,6 +415,24 @@ function App() {
               </Box>
             }
             sx={{ mt: 1 }}
+          />
+          <TextField
+            fullWidth
+            label="Rank"
+            name="rank"
+            value={formData?.priority ? formData?.rank : 0}
+            onChange={handleChange}
+            required
+            margin="dense"
+            size="small"
+            type="number"
+            inputProps={{ min: 1 }}
+            disabled={!formData?.priority}
+            // helperText={
+            //   !formData?.priority
+            //     ? "Enable priority to set rank"
+            //     : "Rank must be unique within same type"
+            // }
           />
           <Box
             sx={{
