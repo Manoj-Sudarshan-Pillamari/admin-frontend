@@ -25,6 +25,10 @@ import {
   Tooltip,
   Snackbar,
   Alert,
+  MenuItem,
+  Select,
+  InputLabel,
+  FormControl,
 } from "@mui/material";
 import { Add, Edit, Delete, CloudUpload, Close } from "@mui/icons-material";
 
@@ -34,10 +38,14 @@ const columnNames = [
   "Image",
   "Brand Name",
   "Type",
+  "Tile",
   "Rank",
   "Priority",
+  "Speed (ms)",
+  "Link",
   "Actions",
 ];
+const TILE_OPTIONS = Array?.from({ length: 28 }, (_, i) => i + 1);
 
 function App() {
   const [contentList, setContentList] = useState([]);
@@ -54,8 +62,11 @@ function App() {
     brandName: "",
     description: "",
     type: "",
+    tile: "",
     rank: "",
     priority: false,
+    autoplaySpeed: 3000,
+    link: "",
   });
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -91,8 +102,11 @@ function App() {
       brandName: "",
       description: "",
       type: "",
+      tile: "",
       rank: "",
       priority: false,
+      autoplaySpeed: 3000,
+      link: "",
     });
     setFile(null);
     setPreview(null);
@@ -104,9 +118,12 @@ function App() {
     setFormData({
       brandName: brand?.brandName,
       description: brand?.description,
-      type: brand?.type,
+      type: brand?.type || "",
+      tile: brand?.tile,
       rank: brand?.rank,
       priority: brand?.priority,
+      autoplaySpeed: brand?.autoplaySpeed || 3000,
+      link: brand?.link || "",
     });
     setFile(null);
     setPreview(brand?.media?.url || null);
@@ -155,7 +172,7 @@ function App() {
     const duplicate = contentList?.find(
       (brand) =>
         brand?._id !== selectedId &&
-        brand?.type?.toLowerCase() === formData?.type?.toLowerCase() &&
+        brand?.tile === Number(formData?.tile) &&
         brand?.rank === Number(formData?.rank) &&
         brand?.priority === true
     );
@@ -164,8 +181,8 @@ function App() {
   };
 
   const handleSubmit = async () => {
-    if (!formData?.brandName || !formData?.description || !formData?.type) {
-      showSnackbar("All fields are required", "error");
+    if (!formData?.brandName || !formData?.description || !formData?.tile) {
+      showSnackbar("Brand Name, Description and Tile are required", "error");
       return;
     }
 
@@ -179,10 +196,20 @@ function App() {
       return;
     }
 
+    if (!formData?.autoplaySpeed || formData?.autoplaySpeed < 1000) {
+      showSnackbar("Autoplay speed must be at least 1000ms", "error");
+      return;
+    }
+
+    if (formData?.autoplaySpeed > 30000) {
+      showSnackbar("Autoplay speed cannot exceed 30000ms", "error");
+      return;
+    }
+
     const duplicate = isDuplicateRank();
     if (duplicate) {
       showSnackbar(
-        `Rank ${formData?.rank} already exists in "${formData?.type}". Please provide a unique rank value.`,
+        `Rank ${formData?.rank} already exists in Tile ${formData?.tile} with priority. Please provide a unique rank value.`,
         "error"
       );
       return;
@@ -194,9 +221,12 @@ function App() {
       const data = new FormData();
       data?.append("brandName", formData?.brandName);
       data?.append("description", formData?.description);
-      data?.append("type", formData?.type);
+      data?.append("type", formData?.type || "");
+      data?.append("tile", formData?.tile);
       data?.append("rank", formData?.priority ? formData?.rank : 0);
       data?.append("priority", formData?.priority);
+      data?.append("autoplaySpeed", formData?.autoplaySpeed);
+      data?.append("link", formData?.link || "");
       if (file) data?.append("media", file);
 
       if (selectedId) {
@@ -239,7 +269,7 @@ function App() {
   };
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth="xl" sx={{ py: 4 }}>
       <Box
         style={{
           display: "flex",
@@ -267,7 +297,7 @@ function App() {
         </Box>
       ) : (
         <TableContainer component={Paper}>
-          <Table>
+          <Table size="small">
             <TableHead>
               <TableRow sx={{ backgroundColor: "#1d1f21" }}>
                 {columnNames?.map((header) => (
@@ -283,7 +313,7 @@ function App() {
             <TableBody>
               {contentList?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                     No records found
                   </TableCell>
                 </TableRow>
@@ -292,10 +322,7 @@ function App() {
                   <TableRow
                     key={brand?._id}
                     hover
-                    sx={{
-                      padding: 0,
-                      margin: 0,
-                    }}
+                    sx={{ padding: 0, margin: 0 }}
                   >
                     <TableCell>{index + 1}</TableCell>
                     <TableCell>
@@ -313,7 +340,15 @@ function App() {
                       )}
                     </TableCell>
                     <TableCell>{brand?.brandName}</TableCell>
-                    <TableCell>{brand?.type}</TableCell>
+                    <TableCell>{brand?.type || "-"}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={`Tile - ${brand?.tile}`}
+                        color="primary"
+                        size="small"
+                        variant="outlined"
+                      />
+                    </TableCell>
                     <TableCell>{brand?.rank}</TableCell>
                     <TableCell>
                       <Chip
@@ -321,6 +356,29 @@ function App() {
                         color={brand?.priority ? "success" : "default"}
                         size="small"
                       />
+                    </TableCell>
+                    <TableCell>{brand?.autoplaySpeed || 3000}ms</TableCell>
+                    <TableCell>
+                      {brand?.link ? (
+                        <Tooltip title={brand?.link}>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              maxWidth: 100,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              cursor: "pointer",
+                              color: "#1976d2",
+                            }}
+                            onClick={() => window.open(brand?.link, "_blank")}
+                          >
+                            {brand?.link}
+                          </Typography>
+                        </Tooltip>
+                      ) : (
+                        "-"
+                      )}
                     </TableCell>
                     <TableCell>
                       <Tooltip title="Edit">
@@ -354,6 +412,7 @@ function App() {
         open={editDialog}
         onClose={handleClose}
         maxWidth="sm"
+        fullWidth
         sx={{ overflowY: "hidden" }}
       >
         <DialogTitle
@@ -394,13 +453,37 @@ function App() {
           />
           <TextField
             fullWidth
-            label="Type"
+            label="Type (Optional)"
             name="type"
             value={formData?.type}
             onChange={handleChange}
-            required
             margin="dense"
             size="small"
+          />
+          <FormControl fullWidth margin="dense" size="small" required>
+            <InputLabel>Tile Number</InputLabel>
+            <Select
+              name="tile"
+              value={formData?.tile}
+              onChange={handleChange}
+              label="Tile Number"
+            >
+              {TILE_OPTIONS?.map((num) => (
+                <MenuItem key={num} value={num}>
+                  Tile {num}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            label="Link (Optional)"
+            name="link"
+            value={formData?.link}
+            onChange={handleChange}
+            margin="dense"
+            size="small"
+            placeholder="https://example.com"
           />
           <FormControlLabel
             control={
@@ -428,11 +511,19 @@ function App() {
             type="number"
             inputProps={{ min: 1 }}
             disabled={!formData?.priority}
-            // helperText={
-            //   !formData?.priority
-            //     ? "Enable priority to set rank"
-            //     : "Rank must be unique within same type"
-            // }
+          />
+          <TextField
+            fullWidth
+            label="Autoplay Speed (ms)"
+            name="autoplaySpeed"
+            value={formData?.autoplaySpeed}
+            onChange={handleChange}
+            required
+            margin="dense"
+            size="small"
+            type="number"
+            inputProps={{ min: 1000, max: 30000, step: 500 }}
+            helperText="Min: 1000ms | Max: 30000ms | Default: 3000ms"
           />
           <Box
             sx={{
@@ -518,18 +609,18 @@ function App() {
       </Dialog>
 
       <Snackbar
-        open={snackbar.open}
+        open={snackbar?.open}
         autoHideDuration={3000}
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: "top", horizontal: "right" }}
       >
         <Alert
           onClose={handleCloseSnackbar}
-          severity={snackbar.type}
+          severity={snackbar?.type}
           variant="filled"
           sx={{ width: "100%" }}
         >
-          {snackbar.message}
+          {snackbar?.message}
         </Alert>
       </Snackbar>
     </Container>
