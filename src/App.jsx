@@ -296,14 +296,26 @@ function App() {
           <CircularProgress />
         </Box>
       ) : (
-        <TableContainer component={Paper}>
-          <Table size="small">
+        <TableContainer
+          component={Paper}
+          sx={{
+            maxHeight: "70vh",
+            overflowX: "auto",
+            scrollbarWidth: "thin",
+            scrollbarColor: "#5472e9 #dedede",
+          }}
+        >
+          <Table size="small" stickyHeader>
             <TableHead>
-              <TableRow sx={{ backgroundColor: "#1d1f21" }}>
+              <TableRow>
                 {columnNames?.map((header) => (
                   <TableCell
                     key={header}
-                    sx={{ color: "#fff", fontWeight: "bold" }}
+                    sx={{
+                      backgroundColor: "#1d1f21",
+                      color: "#fff",
+                      fontWeight: "bold",
+                    }}
                   >
                     {header}
                   </TableCell>
