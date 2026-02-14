@@ -29,21 +29,22 @@ import {
   Select,
   InputLabel,
   FormControl,
+  TableSortLabel,
 } from "@mui/material";
 import { Add, Edit, Delete, CloudUpload, Close } from "@mui/icons-material";
 
 const API_URL = import.meta.env.VITE_API_URL;
 const columnNames = [
-  "#",
-  "Image",
-  "Brand Name",
-  "Type",
-  "Tile",
-  "Rank",
-  "Priority",
-  "Speed (ms)",
-  "Link",
-  "Actions",
+  { id: "index", label: "#", sortable: false },
+  { id: "media", label: "Image", sortable: false },
+  { id: "brandName", label: "Brand Name", sortable: true },
+  { id: "type", label: "Type", sortable: true },
+  { id: "tile", label: "Tile", sortable: true },
+  { id: "rank", label: "Rank", sortable: true },
+  { id: "priority", label: "Priority", sortable: true },
+  { id: "autoplaySpeed", label: "Speed (ms)", sortable: true },
+  { id: "link", label: "Link", sortable: false },
+  { id: "actions", label: "Actions", sortable: false },
 ];
 const TILE_OPTIONS = Array?.from({ length: 28 }, (_, i) => i + 1);
 
@@ -71,6 +72,8 @@ function App() {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
+  const [orderBy, setOrderBy] = useState("");
+  const [order, setOrder] = useState("asc");
 
   const fetchBrands = async () => {
     setLoading(true);
@@ -268,6 +271,39 @@ function App() {
     }
   };
 
+  const handleRequestSort = (property) => {
+    const isAsc = orderBy === property && order === "asc";
+    setOrder(isAsc ? "desc" : "asc");
+    setOrderBy(property);
+  };
+
+  const getSortedData = () => {
+    if (!orderBy) return contentList;
+
+    return [...contentList].sort((a, b) => {
+      let aValue = a[orderBy];
+      let bValue = b[orderBy];
+
+      // Handle null/undefined values
+      if (aValue === null || aValue === undefined) aValue = "";
+      if (bValue === null || bValue === undefined) bValue = "";
+
+      // Convert to lowercase for string comparison
+      if (typeof aValue === "string") aValue = aValue.toLowerCase();
+      if (typeof bValue === "string") bValue = bValue.toLowerCase();
+
+      if (aValue < bValue) {
+        return order === "asc" ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return order === "asc" ? 1 : -1;
+      }
+      return 0;
+    });
+  };
+
+  const sortedContentList = getSortedData();
+
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
       <Box
@@ -308,29 +344,54 @@ function App() {
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
-                {columnNames?.map((header) => (
+                {columnNames?.map((column) => (
                   <TableCell
-                    key={header}
+                    key={column.id}
                     sx={{
                       backgroundColor: "#1d1f21",
                       color: "#fff",
                       fontWeight: "bold",
                     }}
                   >
-                    {header}
+                    {column?.sortable ? (
+                      <TableSortLabel
+                        active={orderBy === column?.id}
+                        direction={orderBy === column?.id ? order : "asc"}
+                        onClick={() => handleRequestSort(column?.id)}
+                        sx={{
+                          color: "#fff !important",
+                          "&:hover": {
+                            color: "#fff !important",
+                          },
+                          "& .MuiTableSortLabel-icon": {
+                            color: "#fff !important",
+                          },
+                          "&.Mui-active": {
+                            color: "#fff !important",
+                            "& .MuiTableSortLabel-icon": {
+                              color: "#fff !important",
+                            },
+                          },
+                        }}
+                      >
+                        {column?.label}
+                      </TableSortLabel>
+                    ) : (
+                      column?.label
+                    )}
                   </TableCell>
                 ))}
               </TableRow>
             </TableHead>
             <TableBody>
-              {contentList?.length === 0 ? (
+              {sortedContentList?.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                     No records found
                   </TableCell>
                 </TableRow>
               ) : (
-                contentList?.map((brand, index) => (
+                sortedContentList?.map((brand, index) => (
                   <TableRow
                     key={brand?._id}
                     hover
