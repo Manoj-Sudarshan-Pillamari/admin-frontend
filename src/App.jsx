@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import ReactCrop from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
 import {
   Container,
   Typography,
@@ -31,7 +33,15 @@ import {
   FormControl,
   TableSortLabel,
 } from "@mui/material";
-import { Add, Edit, Delete, CloudUpload, Close } from "@mui/icons-material";
+import {
+  Add,
+  Edit,
+  Delete,
+  CloudUpload,
+  Close,
+  Crop,
+} from "@mui/icons-material";
+import { TYPE_OPTIONS } from "./constant.js";
 
 const API_URL = import.meta.env.VITE_API_URL;
 const columnNames = [
@@ -46,7 +56,36 @@ const columnNames = [
   { id: "link", label: "Link", sortable: false },
   { id: "actions", label: "Actions", sortable: false },
 ];
-const TILE_OPTIONS = Array?.from({ length: 28 }, (_, i) => i + 1);
+const TILE_OPTIONS = Array.from({ length: 28 }, (_, i) => i + 1);
+
+const getCroppedImg = (image, crop) => {
+  const canvas = document.createElement("canvas");
+  const scaleX = image.naturalWidth / image.width;
+  const scaleY = image.naturalHeight / image.height;
+
+  canvas.width = crop.width * scaleX;
+  canvas.height = crop.height * scaleY;
+
+  const ctx = canvas.getContext("2d");
+
+  ctx.drawImage(
+    image,
+    crop.x * scaleX,
+    crop.y * scaleY,
+    crop.width * scaleX,
+    crop.height * scaleY,
+    0,
+    0,
+    crop.width * scaleX,
+    crop.height * scaleY
+  );
+
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      resolve(blob);
+    }, "image/jpeg");
+  });
+};
 
 function App() {
   const [contentList, setContentList] = useState([]);
@@ -74,6 +113,19 @@ function App() {
   const [selectedId, setSelectedId] = useState(null);
   const [orderBy, setOrderBy] = useState("");
   const [order, setOrder] = useState("asc");
+
+  const [cropDialog, setCropDialog] = useState(false);
+  const [imageSrc, setImageSrc] = useState(null);
+  const [crop, setCrop] = useState({
+    unit: "%",
+    x: 25,
+    y: 25,
+    width: 50,
+    height: 50,
+  });
+  const [completedCrop, setCompletedCrop] = useState(null);
+  const [originalFileName, setOriginalFileName] = useState("");
+  const imgRef = useRef(null);
 
   const fetchBrands = async () => {
     setLoading(true);
@@ -162,11 +214,77 @@ function App() {
   const handleFileChange = (e) => {
     const selected = e?.target?.files[0];
     if (selected) {
-      setFile(selected);
-      const reader = new FileReader();
-      reader.onloadend = () => setPreview(reader.result);
-      reader.readAsDataURL(selected);
+      if (
+        selected?.type?.startsWith("image/") &&
+        selected?.type !== "image/gif"
+      ) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImageSrc(reader.result);
+          setOriginalFileName(selected.name);
+          setCrop({ unit: "%", x: 25, y: 25, width: 50, height: 50 });
+          setCompletedCrop(null);
+          setCropDialog(true);
+        };
+        reader.readAsDataURL(selected);
+      } else {
+        setFile(selected);
+        const reader = new FileReader();
+        reader.onloadend = () => setPreview(reader.result);
+        reader.readAsDataURL(selected);
+      }
     }
+    e.target.value = "";
+  };
+
+  const onImageLoad = (e) => {
+    imgRef.current = e.currentTarget;
+    const { width, height } = e.currentTarget;
+    const size = Math.min(width, height) * 0.5;
+    const x = (width - size) / 2;
+    const y = (height - size) / 2;
+    setCrop({ unit: "px", x, y, width: size, height: size });
+  };
+
+  const handleCropConfirm = async () => {
+    if (!imgRef.current || !completedCrop) {
+      showSnackbar("Please select a crop area", "error");
+      return;
+    }
+
+    try {
+      const croppedBlob = await getCroppedImg(imgRef.current, completedCrop);
+      const croppedFile = new File(
+        [croppedBlob],
+        originalFileName || "cropped-image.jpg",
+        { type: "image/jpeg" }
+      );
+      setFile(croppedFile);
+      setPreview(URL.createObjectURL(croppedBlob));
+      setCropDialog(false);
+      setImageSrc(null);
+    } catch (err) {
+      showSnackbar("Failed to crop image", "error");
+    }
+  };
+
+  const handleSkipCrop = () => {
+    fetch(imageSrc)
+      .then((res) => res.blob())
+      .then((blob) => {
+        const originalFile = new File([blob], originalFileName || "image.jpg", {
+          type: blob.type,
+        });
+        setFile(originalFile);
+        setPreview(imageSrc);
+        setCropDialog(false);
+        setImageSrc(null);
+      });
+  };
+
+  const handleCropDialogClose = () => {
+    setCropDialog(false);
+    setImageSrc(null);
   };
 
   const isDuplicateRank = () => {
@@ -184,8 +302,16 @@ function App() {
   };
 
   const handleSubmit = async () => {
-    if (!formData?.brandName || !formData?.description || !formData?.tile) {
-      showSnackbar("Brand Name, Description and Tile are required", "error");
+    if (
+      !formData?.brandName ||
+      !formData?.description ||
+      !formData?.tile ||
+      !formData?.link
+    ) {
+      showSnackbar(
+        "Brand Name, Description, Tile and Link are required",
+        "error"
+      );
       return;
     }
 
@@ -222,15 +348,15 @@ function App() {
 
     try {
       const data = new FormData();
-      data?.append("brandName", formData?.brandName);
-      data?.append("description", formData?.description);
-      data?.append("type", formData?.type || "");
-      data?.append("tile", formData?.tile);
-      data?.append("rank", formData?.priority ? formData?.rank : 0);
-      data?.append("priority", formData?.priority);
-      data?.append("autoplaySpeed", formData?.autoplaySpeed);
-      data?.append("link", formData?.link || "");
-      if (file) data?.append("media", file);
+      data.append("brandName", formData?.brandName);
+      data.append("description", formData?.description);
+      data.append("type", formData?.type || "");
+      data.append("tile", formData?.tile);
+      data.append("rank", formData?.priority ? formData?.rank : 0);
+      data.append("priority", formData?.priority);
+      data.append("autoplaySpeed", formData?.autoplaySpeed);
+      data.append("link", formData?.link);
+      if (file) data.append("media", file);
 
       if (selectedId) {
         await axios.put(`${API_URL}/${selectedId}`, data, {
@@ -284,20 +410,14 @@ function App() {
       let aValue = a[orderBy];
       let bValue = b[orderBy];
 
-      // Handle null/undefined values
       if (aValue === null || aValue === undefined) aValue = "";
       if (bValue === null || bValue === undefined) bValue = "";
 
-      // Convert to lowercase for string comparison
       if (typeof aValue === "string") aValue = aValue.toLowerCase();
       if (typeof bValue === "string") bValue = bValue.toLowerCase();
 
-      if (aValue < bValue) {
-        return order === "asc" ? -1 : 1;
-      }
-      if (aValue > bValue) {
-        return order === "asc" ? 1 : -1;
-      }
+      if (aValue < bValue) return order === "asc" ? -1 : 1;
+      if (aValue > bValue) return order === "asc" ? 1 : -1;
       return 0;
     });
   };
@@ -316,7 +436,6 @@ function App() {
         <Typography variant="h4" fontWeight="bold" gutterBottom>
           Premium Brands Admin UI
         </Typography>
-
         <Button
           variant="contained"
           startIcon={<Add />}
@@ -360,9 +479,7 @@ function App() {
                         onClick={() => handleRequestSort(column?.id)}
                         sx={{
                           color: "#fff !important",
-                          "&:hover": {
-                            color: "#fff !important",
-                          },
+                          "&:hover": { color: "#fff !important" },
                           "& .MuiTableSortLabel-icon": {
                             color: "#fff !important",
                           },
@@ -404,11 +521,7 @@ function App() {
                           component="img"
                           src={brand?.media?.url}
                           alt={brand?.brandName}
-                          sx={{
-                            width: 50,
-                            height: 50,
-                            borderRadius: 1,
-                          }}
+                          sx={{ width: 50, height: 50, borderRadius: 1 }}
                         />
                       )}
                     </TableCell>
@@ -432,26 +545,22 @@ function App() {
                     </TableCell>
                     <TableCell>{brand?.autoplaySpeed || 3000}ms</TableCell>
                     <TableCell>
-                      {brand?.link ? (
-                        <Tooltip title={brand?.link}>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              maxWidth: 100,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              cursor: "pointer",
-                              color: "#1976d2",
-                            }}
-                            onClick={() => window.open(brand?.link, "_blank")}
-                          >
-                            {brand?.link}
-                          </Typography>
-                        </Tooltip>
-                      ) : (
-                        "-"
-                      )}
+                      <Tooltip title={brand?.link}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            maxWidth: 100,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            cursor: "pointer",
+                            color: "#1976d2",
+                          }}
+                          onClick={() => window.open(brand?.link, "_blank")}
+                        >
+                          {brand?.link}
+                        </Typography>
+                      </Tooltip>
                     </TableCell>
                     <TableCell>
                       <Tooltip title="Edit">
@@ -481,13 +590,7 @@ function App() {
         </TableContainer>
       )}
 
-      <Dialog
-        open={editDialog}
-        onClose={handleClose}
-        maxWidth="sm"
-        fullWidth
-        sx={{ overflowY: "hidden" }}
-      >
+      <Dialog open={editDialog} onClose={handleClose} maxWidth="sm" fullWidth>
         <DialogTitle
           sx={{
             display: "flex",
@@ -500,7 +603,6 @@ function App() {
             <Close />
           </IconButton>
         </DialogTitle>
-
         <DialogContent dividers>
           <TextField
             fullWidth
@@ -524,15 +626,24 @@ function App() {
             multiline
             rows={3}
           />
-          <TextField
-            fullWidth
-            label="Type (Optional)"
-            name="type"
-            value={formData?.type}
-            onChange={handleChange}
-            margin="dense"
-            size="small"
-          />
+          <FormControl fullWidth margin="dense" size="small">
+            <InputLabel>Industry Type (Optional)</InputLabel>
+            <Select
+              name="type"
+              value={formData?.type}
+              onChange={handleChange}
+              label="Industry Type (Optional)"
+            >
+              <MenuItem value="">
+                <em>None</em>
+              </MenuItem>
+              {TYPE_OPTIONS?.map((type) => (
+                <MenuItem key={type} value={type}>
+                  {type}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <FormControl fullWidth margin="dense" size="small" required>
             <InputLabel>Tile Number</InputLabel>
             <Select
@@ -550,10 +661,11 @@ function App() {
           </FormControl>
           <TextField
             fullWidth
-            label="Link (Optional)"
+            label="Link"
             name="link"
             value={formData?.link}
             onChange={handleChange}
+            required
             margin="dense"
             size="small"
             placeholder="https://example.com"
@@ -613,20 +725,45 @@ function App() {
                   component="img"
                   src={preview}
                   alt="Preview"
-                  sx={{ maxHeight: 150, maxWidth: "100%", borderRadius: 1 }}
-                />
-                <br />
-                <Button
-                  size="small"
-                  color="error"
-                  onClick={() => {
-                    setFile(null);
-                    setPreview(null);
+                  sx={{
+                    maxHeight: 150,
+                    maxWidth: "100%",
+                    borderRadius: 1,
                   }}
-                  sx={{ mt: 1 }}
+                />
+                <Box
+                  sx={{
+                    mt: 1,
+                    display: "flex",
+                    justifyContent: "center",
+                    gap: 1,
+                  }}
                 >
-                  Remove
-                </Button>
+                  <Button
+                    size="small"
+                    color="error"
+                    onClick={() => {
+                      setFile(null);
+                      setPreview(null);
+                    }}
+                  >
+                    Remove
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<Crop />}
+                    component="label"
+                  >
+                    Change & Crop
+                    <input
+                      type="file"
+                      hidden
+                      accept="image/*"
+                      onChange={handleFileChange}
+                    />
+                  </Button>
+                </Box>
               </Box>
             ) : (
               <Button
@@ -645,7 +782,6 @@ function App() {
             )}
           </Box>
         </DialogContent>
-
         <DialogActions sx={{ p: 2 }}>
           <Button onClick={handleClose} color="inherit">
             Cancel
@@ -662,15 +798,76 @@ function App() {
       </Dialog>
 
       <Dialog
+        open={cropDialog}
+        onClose={handleCropDialogClose}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Crop /> Crop Image
+          </Box>
+          <IconButton onClick={handleCropDialogClose} size="small">
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            bgcolor: "#f5f5f5",
+            p: 2,
+          }}
+        >
+          {imageSrc && (
+            <ReactCrop
+              crop={crop}
+              onChange={(c) => setCrop(c)}
+              onComplete={(c) => setCompletedCrop(c)}
+              aspect={1}
+              style={{ maxHeight: "60vh" }}
+            >
+              <img
+                src={imageSrc}
+                alt="Crop"
+                onLoad={onImageLoad}
+                style={{
+                  maxHeight: "60vh",
+                  maxWidth: "100%",
+                  objectFit: "contain",
+                }}
+              />
+            </ReactCrop>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Typography variant="body2" sx={{ flex: 1, color: "#666", pl: 1 }}>
+            Drag corners to resize • Drag inside to move
+          </Typography>
+          <Button onClick={handleSkipCrop} color="inherit">
+            Skip Crop
+          </Button>
+          <Button variant="contained" onClick={handleCropConfirm}>
+            Crop & Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
         open={deleteDialog}
         onClose={handleCloseDeleteDialog}
         maxWidth="sm"
-        sx={{ overflowY: "hidden", fontFamily: "Roboto, sans-serif" }}
       >
         <DialogContent sx={{ fontSize: 18 }}>
           Are you sure you want to delete the record?
         </DialogContent>
-
         <DialogActions sx={{ p: 2 }}>
           <Button onClick={handleCloseDeleteDialog} color="inherit">
             No
