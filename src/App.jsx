@@ -32,6 +32,7 @@ import {
   InputLabel,
   FormControl,
   TableSortLabel,
+  Switch,
 } from "@mui/material";
 import {
   Add,
@@ -44,6 +45,7 @@ import {
 import { TYPE_OPTIONS } from "./constant.js";
 
 const API_URL = import.meta.env.VITE_API_URL;
+
 const columnNames = [
   { id: "index", label: "#", sortable: false },
   { id: "media", label: "Image", sortable: false },
@@ -53,10 +55,41 @@ const columnNames = [
   { id: "rank", label: "Rank", sortable: true },
   { id: "priority", label: "Priority", sortable: true },
   { id: "autoplaySpeed", label: "Speed (ms)", sortable: true },
+  { id: "startDateTime", label: "Start Date", sortable: true },
+  { id: "endDateTime", label: "End Date", sortable: true },
+  { id: "status", label: "Status", sortable: true },
   { id: "link", label: "Link", sortable: false },
   { id: "actions", label: "Actions", sortable: false },
 ];
+
 const TILE_OPTIONS = Array.from({ length: 28 }, (_, i) => i + 1);
+
+const formatDateTimeLocal = (dateString) => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
+};
+
+const formatDisplayDate = (dateString) => {
+  if (!dateString) return "-";
+  return new Date(dateString).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+const isCurrentlyLive = (startDateTime, endDateTime) => {
+  const now = new Date();
+  const start = new Date(startDateTime);
+  const end = new Date(endDateTime);
+  return now >= start && now <= end;
+};
 
 const getCroppedImg = (image, crop) => {
   const canvas = document.createElement("canvas");
@@ -107,12 +140,16 @@ function App() {
     priority: false,
     autoplaySpeed: 3000,
     link: "",
+    startDateTime: "",
+    endDateTime: "",
+    status: "active",
   });
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [orderBy, setOrderBy] = useState("");
   const [order, setOrder] = useState("asc");
+  const [togglingStatus, setTogglingStatus] = useState(null);
 
   const [cropDialog, setCropDialog] = useState(false);
   const [imageSrc, setImageSrc] = useState(null);
@@ -162,6 +199,9 @@ function App() {
       priority: false,
       autoplaySpeed: 3000,
       link: "",
+      startDateTime: "",
+      endDateTime: "",
+      status: "active",
     });
     setFile(null);
     setPreview(null);
@@ -179,6 +219,9 @@ function App() {
       priority: brand?.priority,
       autoplaySpeed: brand?.autoplaySpeed || 3000,
       link: brand?.link || "",
+      startDateTime: formatDateTimeLocal(brand?.startDateTime),
+      endDateTime: formatDateTimeLocal(brand?.endDateTime),
+      status: brand?.status || "active",
     });
     setFile(null);
     setPreview(brand?.media?.url || null);
@@ -210,6 +253,19 @@ function App() {
       rank: checked ? "" : 0,
     });
   };
+
+  // const handleToggleStatus = async (id) => {
+  //   setTogglingStatus(id);
+  //   try {
+  //     const res = await axios.patch(`${API_URL}/${id}/toggle-status`);
+  //     showSnackbar(res?.data?.message, "success");
+  //     fetchBrands();
+  //   } catch (err) {
+  //     showSnackbar("Failed to toggle status", "error");
+  //   } finally {
+  //     setTogglingStatus(null);
+  //   }
+  // };
 
   const handleFileChange = (e) => {
     const selected = e?.target?.files[0];
@@ -315,6 +371,19 @@ function App() {
       return;
     }
 
+    if (!formData?.startDateTime || !formData?.endDateTime) {
+      showSnackbar("Start date-time and End date-time are required", "error");
+      return;
+    }
+
+    const startDate = new Date(formData?.startDateTime);
+    const endDate = new Date(formData?.endDateTime);
+
+    if (endDate <= startDate) {
+      showSnackbar("End date-time must be after start date-time", "error");
+      return;
+    }
+
     if (formData?.priority && !formData?.rank) {
       showSnackbar("Rank is required when priority is enabled", "error");
       return;
@@ -356,6 +425,9 @@ function App() {
       data.append("priority", formData?.priority);
       data.append("autoplaySpeed", formData?.autoplaySpeed);
       data.append("link", formData?.link);
+      data.append("startDateTime", formData?.startDateTime);
+      data.append("endDateTime", formData?.endDateTime);
+      data.append("status", formData?.status);
       if (file) data.append("media", file);
 
       if (selectedId) {
@@ -413,6 +485,11 @@ function App() {
       if (aValue === null || aValue === undefined) aValue = "";
       if (bValue === null || bValue === undefined) bValue = "";
 
+      if (orderBy === "startDateTime" || orderBy === "endDateTime") {
+        aValue = new Date(aValue).getTime() || 0;
+        bValue = new Date(bValue).getTime() || 0;
+      }
+
       if (typeof aValue === "string") aValue = aValue.toLowerCase();
       if (typeof bValue === "string") bValue = bValue.toLowerCase();
 
@@ -423,6 +500,21 @@ function App() {
   };
 
   const sortedContentList = getSortedData();
+
+  const getStatusInfo = (brand) => {
+    if (brand?.status === "inactive") {
+      return { label: "Inactive", color: "default" };
+    }
+    const live = isCurrentlyLive(brand?.startDateTime, brand?.endDateTime);
+    if (live) {
+      return { label: "Live", color: "success" };
+    }
+    const now = new Date();
+    if (new Date(brand?.startDateTime) > now) {
+      return { label: "Scheduled", color: "info" };
+    }
+    return { label: "Expired", color: "warning" };
+  };
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -470,6 +562,7 @@ function App() {
                       backgroundColor: "#1d1f21",
                       color: "#fff",
                       fontWeight: "bold",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {column?.sortable ? (
@@ -503,87 +596,116 @@ function App() {
             <TableBody>
               {sortedContentList?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={13} align="center" sx={{ py: 4 }}>
                     No records found
                   </TableCell>
                 </TableRow>
               ) : (
-                sortedContentList?.map((brand, index) => (
-                  <TableRow
-                    key={brand?._id}
-                    hover
-                    sx={{ padding: 0, margin: 0 }}
-                  >
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>
-                      {brand?.media?.url && (
-                        <Box
-                          component="img"
-                          src={brand?.media?.url}
-                          alt={brand?.brandName}
-                          sx={{ width: 50, height: 50, borderRadius: 1 }}
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>{brand?.brandName}</TableCell>
-                    <TableCell>{brand?.type || "-"}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={`Tile - ${brand?.tile}`}
-                        color="primary"
-                        size="small"
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell>{brand?.rank}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={brand?.priority ? "Yes" : "No"}
-                        color={brand?.priority ? "success" : "default"}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>{brand?.autoplaySpeed || 3000}ms</TableCell>
-                    <TableCell>
-                      <Tooltip title={brand?.link}>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            maxWidth: 100,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            cursor: "pointer",
-                            color: "#1976d2",
-                          }}
-                          onClick={() => window.open(brand?.link, "_blank")}
-                        >
-                          {brand?.link}
-                        </Typography>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell>
-                      <Tooltip title="Edit">
-                        <IconButton
+                sortedContentList?.map((brand, index) => {
+                  const statusInfo = getStatusInfo(brand);
+                  return (
+                    <TableRow
+                      key={brand?._id}
+                      hover
+                      sx={{
+                        padding: 0,
+                        margin: 0,
+                        opacity: brand?.status === "inactive" ? 0.6 : 1,
+                      }}
+                    >
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell>
+                        {brand?.media?.url && (
+                          <Box
+                            component="img"
+                            src={brand?.media?.url}
+                            alt={brand?.brandName}
+                            sx={{ width: 50, height: 50, borderRadius: 1 }}
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>{brand?.brandName}</TableCell>
+                      <TableCell>{brand?.type || "-"}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={`Tile - ${brand?.tile}`}
                           color="primary"
                           size="small"
-                          onClick={() => handleOpenEdit(brand)}
-                        >
-                          <Edit />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete">
-                        <IconButton
-                          color="error"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>{brand?.rank}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={brand?.priority ? "Yes" : "No"}
+                          color={brand?.priority ? "success" : "default"}
                           size="small"
-                          onClick={() => handleOpenDeleteDialog(brand?._id)}
+                        />
+                      </TableCell>
+                      <TableCell>{brand?.autoplaySpeed || 3000}ms</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>
+                        {formatDisplayDate(brand?.startDateTime)}
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>
+                        {formatDisplayDate(brand?.endDateTime)}
+                      </TableCell>
+                      <TableCell>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                          }}
                         >
-                          <Delete />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))
+                          <Chip
+                            label={statusInfo.label}
+                            color={statusInfo.color}
+                            size="small"
+                            variant="outlined"
+                          />
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Tooltip title={brand?.link}>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              maxWidth: 100,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              cursor: "pointer",
+                              color: "#1976d2",
+                            }}
+                            onClick={() => window.open(brand?.link, "_blank")}
+                          >
+                            {brand?.link}
+                          </Typography>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell>
+                        <Tooltip title="Edit">
+                          <IconButton
+                            color="primary"
+                            size="small"
+                            onClick={() => handleOpenEdit(brand)}
+                          >
+                            <Edit />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete">
+                          <IconButton
+                            color="error"
+                            size="small"
+                            onClick={() => handleOpenDeleteDialog(brand?._id)}
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -670,6 +792,94 @@ function App() {
             size="small"
             placeholder="https://example.com"
           />
+
+          <Box
+            sx={{
+              display: "flex",
+              gap: 2,
+              mt: 1,
+            }}
+          >
+            <TextField
+              fullWidth
+              label="Start Date & Time"
+              name="startDateTime"
+              type="datetime-local"
+              value={formData?.startDateTime}
+              onChange={handleChange}
+              required
+              margin="dense"
+              size="small"
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              fullWidth
+              label="End Date & Time"
+              name="endDateTime"
+              type="datetime-local"
+              value={formData?.endDateTime}
+              onChange={handleChange}
+              required
+              margin="dense"
+              size="small"
+              InputLabelProps={{ shrink: true }}
+              inputProps={{
+                min: formData?.startDateTime || undefined,
+              }}
+            />
+          </Box>
+          {formData?.startDateTime &&
+            formData?.endDateTime &&
+            new Date(formData?.endDateTime) <=
+              new Date(formData?.startDateTime) && (
+              <Typography
+                variant="caption"
+                color="error"
+                sx={{ mt: 0.5, display: "block" }}
+              >
+                ⚠ End date-time must be after start date-time
+              </Typography>
+            )}
+
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              mt: 2,
+              p: 1.5,
+              border: "1px solid #e0e0e0",
+              borderRadius: 1,
+              backgroundColor: "#fafafa",
+            }}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              Status:
+            </Typography>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={formData?.status === "active"}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      status: e.target.checked ? "active" : "inactive",
+                    })
+                  }
+                  color="success"
+                />
+              }
+              label={
+                <Chip
+                  label={formData?.status === "active" ? "Active" : "Inactive"}
+                  color={formData?.status === "active" ? "success" : "default"}
+                  size="small"
+                  variant="outlined"
+                />
+              }
+            />
+          </Box>
+
           <FormControlLabel
             control={
               <Checkbox
