@@ -61,7 +61,7 @@ const columnNames = [
   { id: "actions", label: "Actions", sortable: false },
 ];
 
-const TILE_OPTIONS = Array.from({ length: 28 }, (_, i) => i + 1);
+const TILE_OPTIONS = Array.from({ length: 32 }, (_, i) => i + 1);
 
 const formatDateTimeLocal = (dateString) => {
   if (!dateString) return "";
