@@ -17,13 +17,21 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Checkbox,
+  FormControlLabel,
   IconButton,
   Box,
+  Chip,
   CircularProgress,
   Tooltip,
   Snackbar,
   Alert,
+  MenuItem,
+  Select,
+  InputLabel,
+  FormControl,
   TableSortLabel,
+  Switch,
 } from "@mui/material";
 import {
   Add,
@@ -33,15 +41,54 @@ import {
   Close,
   Crop,
 } from "@mui/icons-material";
+import { TYPE_OPTIONS } from "./constant.js";
 
 const API_URL = `${import.meta.env.VITE_API_BASE_URL}/popular-brands`;
+
 const columnNames = [
   { id: "index", label: "#", sortable: false },
-  { id: "media", label: "Media", sortable: false },
-  { id: "link", label: "Link", sortable: false },
+  { id: "media", label: "Image", sortable: false },
+  { id: "brandName", label: "Brand Name", sortable: true },
+  { id: "type", label: "Type", sortable: true },
+  { id: "tile", label: "Tile", sortable: true },
   { id: "rank", label: "Rank", sortable: true },
+  { id: "priority", label: "Priority", sortable: true },
+  { id: "autoplaySpeed", label: "Speed (ms)", sortable: true },
+  { id: "startDateTime", label: "Start Date", sortable: true },
+  { id: "endDateTime", label: "End Date", sortable: true },
+  { id: "status", label: "Status", sortable: true },
+  { id: "link", label: "Link", sortable: false },
   { id: "actions", label: "Actions", sortable: false },
 ];
+
+const TILE_OPTIONS = Array.from({ length: 28 }, (_, i) => i + 1);
+
+const formatDateTimeLocal = (dateString) => {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
+};
+
+const formatDisplayDate = (dateString) => {
+  if (!dateString) return "-";
+  return new Date(dateString).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+const isCurrentlyLive = (startDateTime, endDateTime) => {
+  const now = new Date();
+  const start = new Date(startDateTime);
+  const end = new Date(endDateTime);
+  return now >= start && now <= end;
+};
 
 const getCroppedImg = (image, crop) => {
   const canvas = document.createElement("canvas");
@@ -84,8 +131,17 @@ function PopularBrands() {
     type: "success",
   });
   const [formData, setFormData] = useState({
-    link: "",
+    brandName: "",
+    description: "",
+    type: "",
+    tile: "",
     rank: "",
+    priority: false,
+    autoplaySpeed: 3000,
+    link: "",
+    startDateTime: "",
+    endDateTime: "",
+    status: "active",
   });
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -93,7 +149,6 @@ function PopularBrands() {
   const [orderBy, setOrderBy] = useState("");
   const [order, setOrder] = useState("asc");
 
-  // Crop states
   const [cropDialog, setCropDialog] = useState(false);
   const [imageSrc, setImageSrc] = useState(null);
   const [crop, setCrop] = useState({
@@ -107,7 +162,7 @@ function PopularBrands() {
   const [originalFileName, setOriginalFileName] = useState("");
   const imgRef = useRef(null);
 
-  const fetchPopularBrands = async () => {
+  const fetchBrands = async () => {
     setLoading(true);
     try {
       const res = await axios.get(API_URL);
@@ -120,7 +175,7 @@ function PopularBrands() {
   };
 
   useEffect(() => {
-    fetchPopularBrands();
+    fetchBrands();
   }, []);
 
   const showSnackbar = (message, type = "success") => {
@@ -133,7 +188,19 @@ function PopularBrands() {
   };
 
   const handleOpenAdd = () => {
-    setFormData({ link: "", rank: "" });
+    setFormData({
+      brandName: "",
+      description: "",
+      type: "",
+      tile: "",
+      rank: "",
+      priority: false,
+      autoplaySpeed: 3000,
+      link: "",
+      startDateTime: "",
+      endDateTime: "",
+      status: "active",
+    });
     setFile(null);
     setPreview(null);
     setSelectedId(null);
@@ -142,8 +209,17 @@ function PopularBrands() {
 
   const handleOpenEdit = (brand) => {
     setFormData({
+      brandName: brand?.brandName,
+      description: brand?.description,
+      type: brand?.type || "",
+      tile: brand?.tile,
+      rank: brand?.rank,
+      priority: brand?.priority,
+      autoplaySpeed: brand?.autoplaySpeed || 3000,
       link: brand?.link || "",
-      rank: brand?.rank || "",
+      startDateTime: formatDateTimeLocal(brand?.startDateTime),
+      endDateTime: formatDateTimeLocal(brand?.endDateTime),
+      status: brand?.status || "active",
     });
     setFile(null);
     setPreview(brand?.media?.url || null);
@@ -165,6 +241,15 @@ function PopularBrands() {
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e?.target?.name]: e?.target?.value });
+  };
+
+  const handlePriorityChange = (e) => {
+    const checked = e?.target?.checked;
+    setFormData({
+      ...formData,
+      priority: checked,
+      rank: checked ? "" : 0,
+    });
   };
 
   const handleFileChange = (e) => {
@@ -244,33 +329,70 @@ function PopularBrands() {
   };
 
   const isDuplicateRank = () => {
+    if (!formData?.priority) return false;
+
     const duplicate = contentList?.find(
       (brand) =>
-        brand?._id !== selectedId && brand?.rank === Number(formData?.rank)
+        brand?._id !== selectedId &&
+        brand?.tile === Number(formData?.tile) &&
+        brand?.rank === Number(formData?.rank) &&
+        brand?.priority === true
     );
+
     return duplicate;
   };
 
   const handleSubmit = async () => {
-    if (!formData?.link) {
-      showSnackbar("Link is required", "error");
+    if (
+      !formData?.brandName ||
+      !formData?.description ||
+      !formData?.tile ||
+      !formData?.link
+    ) {
+      showSnackbar(
+        "Brand Name, Description, Tile and Link are required",
+        "error"
+      );
       return;
     }
 
-    if (!formData?.rank || Number(formData?.rank) < 1) {
-      showSnackbar("Rank is required and must be at least 1", "error");
+    if (!formData?.startDateTime || !formData?.endDateTime) {
+      showSnackbar("Start date-time and End date-time are required", "error");
+      return;
+    }
+
+    const startDate = new Date(formData?.startDateTime);
+    const endDate = new Date(formData?.endDateTime);
+
+    if (endDate <= startDate) {
+      showSnackbar("End date-time must be after start date-time", "error");
+      return;
+    }
+
+    if (formData?.priority && !formData?.rank) {
+      showSnackbar("Rank is required when priority is enabled", "error");
       return;
     }
 
     if (!selectedId && !file) {
-      showSnackbar("Please upload a media file", "error");
+      showSnackbar("Please upload an image", "error");
+      return;
+    }
+
+    if (!formData?.autoplaySpeed || formData?.autoplaySpeed < 1000) {
+      showSnackbar("Autoplay speed must be at least 1000ms", "error");
+      return;
+    }
+
+    if (formData?.autoplaySpeed > 30000) {
+      showSnackbar("Autoplay speed cannot exceed 30000ms", "error");
       return;
     }
 
     const duplicate = isDuplicateRank();
     if (duplicate) {
       showSnackbar(
-        `Rank ${formData?.rank} is already assigned to another popular brand. Please use a unique rank.`,
+        `Rank ${formData?.rank} already exists in Tile ${formData?.tile} with priority. Please provide a unique rank value.`,
         "error"
       );
       return;
@@ -280,8 +402,17 @@ function PopularBrands() {
 
     try {
       const data = new FormData();
+      data.append("brandName", formData?.brandName);
+      data.append("description", formData?.description);
+      data.append("type", formData?.type || "");
+      data.append("tile", formData?.tile);
+      data.append("rank", formData?.priority ? formData?.rank : 0);
+      data.append("priority", formData?.priority);
+      data.append("autoplaySpeed", formData?.autoplaySpeed);
       data.append("link", formData?.link);
-      data.append("rank", formData?.rank);
+      data.append("startDateTime", formData?.startDateTime);
+      data.append("endDateTime", formData?.endDateTime);
+      data.append("status", formData?.status);
       if (file) data.append("media", file);
 
       if (selectedId) {
@@ -296,7 +427,7 @@ function PopularBrands() {
         showSnackbar("Popular brand added successfully!", "success");
       }
       handleClose();
-      fetchPopularBrands();
+      fetchBrands();
     } catch (err) {
       showSnackbar(
         err.response?.data?.message || "Something went wrong",
@@ -316,7 +447,7 @@ function PopularBrands() {
     try {
       await axios.delete(`${API_URL}/${selectedId}`);
       showSnackbar("Popular brand deleted successfully!", "success");
-      fetchPopularBrands();
+      fetchBrands();
       handleCloseDeleteDialog();
     } catch (err) {
       showSnackbar("Failed to delete popular brand", "error");
@@ -339,6 +470,11 @@ function PopularBrands() {
       if (aValue === null || aValue === undefined) aValue = "";
       if (bValue === null || bValue === undefined) bValue = "";
 
+      if (orderBy === "startDateTime" || orderBy === "endDateTime") {
+        aValue = new Date(aValue).getTime() || 0;
+        bValue = new Date(bValue).getTime() || 0;
+      }
+
       if (typeof aValue === "string") aValue = aValue.toLowerCase();
       if (typeof bValue === "string") bValue = bValue.toLowerCase();
 
@@ -350,28 +486,19 @@ function PopularBrands() {
 
   const sortedContentList = getSortedData();
 
-  const renderMediaPreview = (brand) => {
-    if (!brand?.media?.url) return null;
-
-    if (brand?.media?.type === "video") {
-      return (
-        <Box
-          component="video"
-          src={brand?.media?.url}
-          sx={{ width: 50, height: 50, borderRadius: 1, objectFit: "cover" }}
-          muted
-        />
-      );
+  const getStatusInfo = (brand) => {
+    if (brand?.status === "inactive") {
+      return { label: "Inactive", color: "default" };
     }
-
-    return (
-      <Box
-        component="img"
-        src={brand?.media?.url}
-        alt="Media"
-        sx={{ width: 50, height: 50, borderRadius: 1, objectFit: "cover" }}
-      />
-    );
+    const live = isCurrentlyLive(brand?.startDateTime, brand?.endDateTime);
+    if (live) {
+      return { label: "Live", color: "success" };
+    }
+    const now = new Date();
+    if (new Date(brand?.startDateTime) > now) {
+      return { label: "Scheduled", color: "info" };
+    }
+    return { label: "Expired", color: "warning" };
   };
 
   return (
@@ -446,56 +573,116 @@ function PopularBrands() {
             <TableBody>
               {sortedContentList?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={13} align="center" sx={{ py: 4 }}>
                     No records found
                   </TableCell>
                 </TableRow>
               ) : (
-                sortedContentList?.map((brand, index) => (
-                  <TableRow key={brand?._id} hover>
-                    <TableCell>{index + 1}</TableCell>
-                    <TableCell>{renderMediaPreview(brand)}</TableCell>
-                    <TableCell>
-                      <Tooltip title={brand?.link}>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            maxWidth: 250,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            cursor: "pointer",
-                            color: "#1976d2",
-                          }}
-                          onClick={() => window.open(brand?.link, "_blank")}
-                        >
-                          {brand?.link}
-                        </Typography>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell>{brand?.rank}</TableCell>
-                    <TableCell>
-                      <Tooltip title="Edit">
-                        <IconButton
+                sortedContentList?.map((brand, index) => {
+                  const statusInfo = getStatusInfo(brand);
+                  return (
+                    <TableRow
+                      key={brand?._id}
+                      hover
+                      sx={{
+                        padding: 0,
+                        margin: 0,
+                        opacity: brand?.status === "inactive" ? 0.6 : 1,
+                      }}
+                    >
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell>
+                        {brand?.media?.url && (
+                          <Box
+                            component="img"
+                            src={brand?.media?.url}
+                            alt={brand?.brandName}
+                            sx={{ width: 50, height: 50, borderRadius: 1 }}
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>{brand?.brandName}</TableCell>
+                      <TableCell>{brand?.type || "-"}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={`Tile - ${brand?.tile}`}
                           color="primary"
                           size="small"
-                          onClick={() => handleOpenEdit(brand)}
-                        >
-                          <Edit />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete">
-                        <IconButton
-                          color="error"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>{brand?.rank}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={brand?.priority ? "Yes" : "No"}
+                          color={brand?.priority ? "success" : "default"}
                           size="small"
-                          onClick={() => handleOpenDeleteDialog(brand?._id)}
+                        />
+                      </TableCell>
+                      <TableCell>{brand?.autoplaySpeed || 3000}ms</TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>
+                        {formatDisplayDate(brand?.startDateTime)}
+                      </TableCell>
+                      <TableCell sx={{ whiteSpace: "nowrap" }}>
+                        {formatDisplayDate(brand?.endDateTime)}
+                      </TableCell>
+                      <TableCell>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1,
+                          }}
                         >
-                          <Delete />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))
+                          <Chip
+                            label={statusInfo.label}
+                            color={statusInfo.color}
+                            size="small"
+                            variant="outlined"
+                          />
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Tooltip title={brand?.link}>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              maxWidth: 100,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              cursor: "pointer",
+                              color: "#1976d2",
+                            }}
+                            onClick={() => window.open(brand?.link, "_blank")}
+                          >
+                            {brand?.link}
+                          </Typography>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell>
+                        <Tooltip title="Edit">
+                          <IconButton
+                            color="primary"
+                            size="small"
+                            onClick={() => handleOpenEdit(brand)}
+                          >
+                            <Edit />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete">
+                          <IconButton
+                            color="error"
+                            size="small"
+                            onClick={() => handleOpenDeleteDialog(brand?._id)}
+                          >
+                            <Delete />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -519,6 +706,53 @@ function PopularBrands() {
         <DialogContent dividers>
           <TextField
             fullWidth
+            label="Popular Brand Name"
+            name="brandName"
+            value={formData?.brandName}
+            onChange={handleChange}
+            required
+            margin="dense"
+            size="small"
+          />
+          <TextField
+            fullWidth
+            label="Description"
+            name="description"
+            value={formData?.description}
+            onChange={handleChange}
+            required
+            margin="dense"
+            size="small"
+            multiline
+            rows={3}
+          />
+          <TextField
+            fullWidth
+            label="Industry Type (Optional)"
+            name="type"
+            value={formData?.type}
+            onChange={handleChange}
+            margin="dense"
+            size="small"
+            placeholder="e.g. Technology, Healthcare, Finance"
+          />
+          <FormControl fullWidth margin="dense" size="small" required>
+            <InputLabel>Tile Number</InputLabel>
+            <Select
+              name="tile"
+              value={formData?.tile}
+              onChange={handleChange}
+              label="Tile Number"
+            >
+              {TILE_OPTIONS?.map((num) => (
+                <MenuItem key={num} value={num}>
+                  Tile {num}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
             label="Link"
             name="link"
             value={formData?.link}
@@ -528,17 +762,127 @@ function PopularBrands() {
             size="small"
             placeholder="https://example.com"
           />
+
+          <Box sx={{ display: "flex", gap: 2, mt: 1 }}>
+            <TextField
+              fullWidth
+              label="Start Date & Time"
+              name="startDateTime"
+              type="datetime-local"
+              value={formData?.startDateTime}
+              onChange={handleChange}
+              required
+              margin="dense"
+              size="small"
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              fullWidth
+              label="End Date & Time"
+              name="endDateTime"
+              type="datetime-local"
+              value={formData?.endDateTime}
+              onChange={handleChange}
+              required
+              margin="dense"
+              size="small"
+              InputLabelProps={{ shrink: true }}
+              inputProps={{
+                min: formData?.startDateTime || undefined,
+              }}
+            />
+          </Box>
+          {formData?.startDateTime &&
+            formData?.endDateTime &&
+            new Date(formData?.endDateTime) <=
+              new Date(formData?.startDateTime) && (
+              <Typography
+                variant="caption"
+                color="error"
+                sx={{ mt: 0.5, display: "block" }}
+              >
+                ⚠ End date-time must be after start date-time
+              </Typography>
+            )}
+
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              mt: 2,
+              p: 1.5,
+              border: "1px solid #e0e0e0",
+              borderRadius: 1,
+              backgroundColor: "#fafafa",
+            }}
+          >
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>
+              Status:
+            </Typography>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={formData?.status === "active"}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      status: e.target.checked ? "active" : "inactive",
+                    })
+                  }
+                  color="success"
+                />
+              }
+              label={
+                <Chip
+                  label={formData?.status === "active" ? "Active" : "Inactive"}
+                  color={formData?.status === "active" ? "success" : "default"}
+                  size="small"
+                  variant="outlined"
+                />
+              }
+            />
+          </Box>
+
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={formData?.priority}
+                onChange={handlePriorityChange}
+              />
+            }
+            label={
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                Priority
+              </Box>
+            }
+            sx={{ mt: 1 }}
+          />
           <TextField
             fullWidth
             label="Rank"
             name="rank"
-            value={formData?.rank}
+            value={formData?.priority ? formData?.rank : 0}
             onChange={handleChange}
             required
             margin="dense"
             size="small"
             type="number"
             inputProps={{ min: 1 }}
+            disabled={!formData?.priority}
+          />
+          <TextField
+            fullWidth
+            label="Autoplay Speed (ms)"
+            name="autoplaySpeed"
+            value={formData?.autoplaySpeed}
+            onChange={handleChange}
+            required
+            margin="dense"
+            size="small"
+            type="number"
+            inputProps={{ min: 1000, max: 30000, step: 500 }}
+            helperText="Min: 1000ms | Max: 30000ms | Default: 3000ms"
           />
           <Box
             sx={{
@@ -551,30 +895,16 @@ function PopularBrands() {
           >
             {preview ? (
               <Box>
-                {file?.type?.startsWith("video/") ||
-                (preview && preview.includes("video")) ? (
-                  <Box
-                    component="video"
-                    src={preview}
-                    controls
-                    sx={{
-                      maxHeight: 150,
-                      maxWidth: "100%",
-                      borderRadius: 1,
-                    }}
-                  />
-                ) : (
-                  <Box
-                    component="img"
-                    src={preview}
-                    alt="Preview"
-                    sx={{
-                      maxHeight: 150,
-                      maxWidth: "100%",
-                      borderRadius: 1,
-                    }}
-                  />
-                )}
+                <Box
+                  component="img"
+                  src={preview}
+                  alt="Preview"
+                  sx={{
+                    maxHeight: 150,
+                    maxWidth: "100%",
+                    borderRadius: 1,
+                  }}
+                />
                 <Box
                   sx={{
                     mt: 1,
@@ -615,7 +945,7 @@ function PopularBrands() {
                 component="label"
                 startIcon={<CloudUpload />}
               >
-                Upload Media
+                Upload Image
                 <input
                   type="file"
                   hidden
