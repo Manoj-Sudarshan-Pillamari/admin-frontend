@@ -33,6 +33,7 @@ import {
   Close,
   Crop,
 } from "@mui/icons-material";
+import MediaPreview from "./component/MediaPreview";
 
 const API_URL = `${import.meta.env.VITE_API_BASE_URL}/pip-videos`;
 
@@ -79,6 +80,7 @@ function VideoPlayer() {
   const [editDialog, setEditDialog] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [previewMedia, setPreviewMedia] = useState(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -130,6 +132,18 @@ function VideoPlayer() {
   const handleCloseSnackbar = (_, reason) => {
     if (reason === "clickaway") return;
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  const handleMediaPreview = (item) => {
+    setPreviewMedia({
+      url: item?.media?.url,
+      type: item?.media?.type,
+      title: `Rank ${item?.rank}`,
+    });
+  };
+
+  const handleClosePreview = () => {
+    setPreviewMedia(null);
   };
 
   const handleOpenAdd = () => {
@@ -454,7 +468,49 @@ function VideoPlayer() {
                 sortedContentList?.map((item, index) => (
                   <TableRow key={item?._id} hover>
                     <TableCell>{index + 1}</TableCell>
-                    <TableCell>{renderMediaPreview(item)}</TableCell>
+                    <TableCell>
+                      {item?.media?.url && (
+                        <Tooltip title="Click to preview">
+                          <Box
+                            onClick={() => handleMediaPreview(item)}
+                            sx={{
+                              width: 50,
+                              height: 50,
+                              borderRadius: 1,
+                              backgroundColor: "#f1f5f9",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              overflow: "hidden",
+                              border: "1px solid #e2e8f0",
+                              transition:
+                                "transform 0.2s ease, box-shadow 0.2s ease",
+                              "&:hover": {
+                                transform: "scale(1.1)",
+                                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                              },
+                            }}
+                          >
+                            <Box
+                              component={
+                                item?.media?.type === "video" ? "video" : "img"
+                              }
+                              src={item?.media?.url}
+                              alt="Media"
+                              sx={{
+                                maxWidth: "100%",
+                                maxHeight: "100%",
+                                objectFit: "contain",
+                              }}
+                              {...(item?.media?.type === "video"
+                                ? { muted: true }
+                                : {})}
+                            />
+                          </Box>
+                        </Tooltip>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Tooltip title={item?.link}>
                         <Typography
@@ -502,7 +558,6 @@ function VideoPlayer() {
         </TableContainer>
       )}
 
-      {/* Add/Edit Dialog */}
       <Dialog open={editDialog} onClose={handleClose} maxWidth="sm" fullWidth>
         <DialogTitle
           sx={{
@@ -641,7 +696,6 @@ function VideoPlayer() {
         </DialogActions>
       </Dialog>
 
-      {/* Crop Dialog */}
       <Dialog
         open={cropDialog}
         onClose={handleCropDialogClose}
@@ -705,7 +759,6 @@ function VideoPlayer() {
         </DialogActions>
       </Dialog>
 
-      {/* Delete Dialog */}
       <Dialog
         open={deleteDialog}
         onClose={handleCloseDeleteDialog}
@@ -724,7 +777,6 @@ function VideoPlayer() {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar */}
       <Snackbar
         open={snackbar?.open}
         autoHideDuration={3000}
@@ -740,6 +792,13 @@ function VideoPlayer() {
           {snackbar?.message}
         </Alert>
       </Snackbar>
+
+      <MediaPreview
+        open={!!previewMedia}
+        onClose={handleClosePreview}
+        media={previewMedia}
+        title={previewMedia?.title}
+      />
     </Box>
   );
 }

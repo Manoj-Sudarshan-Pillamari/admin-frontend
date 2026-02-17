@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import ReactCrop from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
+import MediaPreview from "./component/MediaPreview";
 import {
   Typography,
   Button,
@@ -125,6 +126,7 @@ function PremiumBrands() {
   const [editDialog, setEditDialog] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [previewMedia, setPreviewMedia] = useState(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
@@ -186,6 +188,18 @@ function PremiumBrands() {
   const handleCloseSnackbar = (_, reason) => {
     if (reason === "clickaway") return;
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  const handleMediaPreview = (brand) => {
+    setPreviewMedia({
+      url: brand?.media?.url,
+      type: brand?.media?.type,
+      title: brand?.brandName,
+    });
+  };
+
+  const handleClosePreview = () => {
+    setPreviewMedia(null);
   };
 
   const handleOpenAdd = () => {
@@ -594,12 +608,47 @@ function PremiumBrands() {
                       <TableCell>{index + 1}</TableCell>
                       <TableCell>
                         {brand?.media?.url && (
-                          <Box
-                            component="img"
-                            src={brand?.media?.url}
-                            alt={brand?.brandName}
-                            sx={{ width: 50, height: 50, borderRadius: 1 }}
-                          />
+                          <Tooltip title="Click to preview">
+                            <Box
+                              onClick={() => handleMediaPreview(brand)}
+                              sx={{
+                                width: 50,
+                                height: 50,
+                                borderRadius: 1,
+                                backgroundColor: "#f1f5f9",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: "pointer",
+                                overflow: "hidden",
+                                border: "1px solid #e2e8f0",
+                                transition:
+                                  "transform 0.2s ease, box-shadow 0.2s ease",
+                                "&:hover": {
+                                  transform: "scale(1.1)",
+                                  boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                                },
+                              }}
+                            >
+                              <Box
+                                component={
+                                  brand?.media?.type === "video"
+                                    ? "video"
+                                    : "img"
+                                }
+                                src={brand?.media?.url}
+                                alt={brand?.brandName}
+                                sx={{
+                                  maxWidth: "100%",
+                                  maxHeight: "100%",
+                                  objectFit: "contain",
+                                }}
+                                {...(brand?.media?.type === "video"
+                                  ? { muted: true }
+                                  : {})}
+                              />
+                            </Box>
+                          </Tooltip>
                         )}
                       </TableCell>
                       <TableCell>{brand?.brandName}</TableCell>
@@ -689,8 +738,6 @@ function PremiumBrands() {
           </Table>
         </TableContainer>
       )}
-
-      {/* Add/Edit Dialog */}
       <Dialog open={editDialog} onClose={handleClose} maxWidth="sm" fullWidth>
         <DialogTitle
           sx={{
@@ -971,8 +1018,6 @@ function PremiumBrands() {
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Crop Dialog */}
       <Dialog
         open={cropDialog}
         onClose={handleCropDialogClose}
@@ -1036,7 +1081,6 @@ function PremiumBrands() {
         </DialogActions>
       </Dialog>
 
-      {/* Delete Dialog */}
       <Dialog
         open={deleteDialog}
         onClose={handleCloseDeleteDialog}
@@ -1055,7 +1099,6 @@ function PremiumBrands() {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar */}
       <Snackbar
         open={snackbar?.open}
         autoHideDuration={3000}
@@ -1071,6 +1114,12 @@ function PremiumBrands() {
           {snackbar?.message}
         </Alert>
       </Snackbar>
+      <MediaPreview
+        open={!!previewMedia}
+        onClose={handleClosePreview}
+        media={previewMedia}
+        title={previewMedia?.title}
+      />
     </Box>
   );
 }
